@@ -1,10 +1,14 @@
-using System.Collections.Concurrent;
-using TelemeryHub.Api.TelemetryHub.Api.dto;
+using TelemeryHub.Api.TelemetryHub.Api.Domain;
+using TelemeryHub.Api.TelemetryHub.Api.Contracts;
+using TelemeryHub.Api.TelemetryHub.Api.Stores;
+    
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSingleton<ITelemetryLatestStore, InMemoryTelemetryLastStore>();
+
 var app = builder.Build();
 
-var latestState = new ConcurrentDictionary<string, TelemetryState>();
+
 
 app.MapGet("/", () => "Hello World!");
 app.MapGet("/health", () => Results.Ok(new
@@ -18,21 +22,16 @@ app.MapGet("/ping", () => Results.Ok(new
     Message = "pong"
 }));
 
-app.MapGet("/api/devices/{id}/latest", (string id) =>
+app.MapGet("/api/devices/{id}/latest", (string id, ITelemetryLatestStore store) =>
 {
-    if (latestState.TryGetValue(id, out var value))
+    if (store.TryGetLatest(id, out var state))
     {
-        return Results.Ok(value);
+        return Results.Ok(state);
     }
-
-    return Results.NotFound(new
-    {
-        Error = "Device not found",
-        DeviceId = id
-    });
+    return Results.NotFound(new ErrorResponse("Device " + id + " not found"));
 });
 
-app.MapPost("/api/telemetry", (TelemetryRequest request) =>
+app.MapPost("/api/telemetry", (TelemetryRequest request, ITelemetryLatestStore latestStore ) =>
 {
     if (string.IsNullOrWhiteSpace(request.DeviceId))
     {
@@ -62,14 +61,16 @@ app.MapPost("/api/telemetry", (TelemetryRequest request) =>
         DateTimeOffset.UtcNow
         );
     
-    latestState[request.DeviceId] = state;
+    // latestState[request.DeviceId] = state;
+    latestStore.Save(state);
+    var acceptedResponse = new TelemetryAcceptedResponse
+    (
+        "Telemetry accepted",
+        state.DeviceId,
+        state.ReceivedAt
+    );
     
-    return Results.Accepted(value: new
-    {
-        Message = "Telemetry accepted",
-        PumpStationDeviceId = request.DeviceId,
-        ReceivedAt = DateTimeOffset.UtcNow
-    });
+    return Results.Accepted(value: acceptedResponse);
 
 });
 app.Run();
