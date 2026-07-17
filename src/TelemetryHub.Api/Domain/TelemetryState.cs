@@ -1,4 +1,4 @@
-﻿namespace TelemeryHub.Api.TelemetryHub.Api.dto;
+﻿namespace TelemeryHub.Api.TelemetryHub.Api.Domain;
 
 public sealed record TelemetryState(
         string DeviceId,
